@@ -1,5 +1,3 @@
-import json
-
 class App(object):
   '''
     An app or application has a hostname,
@@ -7,7 +5,7 @@ class App(object):
     it runs on.
   '''
   def __init__(self, container_id, username, hostname, 
-    cpu_shares, ram, host_server, ssh_port, volumes=None):
+    cpu_shares, ram, host_server, ssh_port, volume_list=None):
 
     self.container_id = container_id
     self.username = username
@@ -16,7 +14,7 @@ class App(object):
     self.ram = int(ram)
     self.port_list = []
     self.host_server = host_server
-    self.volumes = volumes
+    self.volume_list = volume_list
     self.ssh_port = int(ssh_port)
 
   def change_container_id(self, new_container_id):
@@ -40,5 +38,5 @@ class App(object):
     return  {'container_id': self.container_id, 'username': self.username,
       'hostname': self.hostname, 'cpu_shares': self.cpu_shares,
       'ram': self.ram, 'port_list': self.port_list, 
-      'host_server': self.host_server, 'volumes': self.volumes,
+      'host_server': self.host_server, 'volumes': self.volume_list,
       'ssh_port': self.ssh_port}

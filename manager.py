@@ -1,14 +1,20 @@
 import logging
 import paramiko
+from paramiko import SSHException
 from pyparsing import Combine, Literal, OneOrMore, nums, Word
 import salt.client
 import sys
+import time
 import unittest
 
 from circularlist import CircularList
 from etcd import Etcd
 from formation import Formation
 from load import Load
+
+class ManagerError(BaseException):
+  #Generic manager error
+  pass
 
 class Manager(object):
   '''
@@ -32,15 +38,12 @@ class Manager(object):
     results = self.salt_client.cmd(host, 'cmd.run', ['lsof -i :%s' % port], expr_form='list')
     self.logger.debug("Salt return: {lsof}".format(lsof=results[host]))
 
-    #lsof = subprocess.Popen('lsof -i %s' % port, shell=True, stdout=PIPE, stderr=PIPE)
-    #lsof.wait()
-    #ret = lsof.returncode
-
     if results[host] is not '':
       return True
     else:
       return False
 
+  #TODO
   def verify_formations(self):
     #call out to ETCD and load all the formations
     user_list = self.etcd.list_directory('formations')
@@ -122,18 +125,20 @@ class Manager(object):
   def start_formation(self, formation):
     #Run a salt cmd to startup the formation
     docker_command = "docker run -c={cpu_shares} -d -h=\"{hostname}\" -m={ram} "\
-      "{port_list}  {image} /usr/sbin/sshd -D"
+      "-name=\"{hostname}\" {port_list} {volume_list} {image} /usr/sbin/sshd -D"
 
     for app in formation.application_list:
+      port_list = ' '.join(map(lambda x: '-p ' + x, app.port_list))
+      volume_list = ' '.join(map(lambda x: '-v ' + x, app.volume_list))
+
       d = docker_command.format(cpu_shares=app.cpu_shares, 
         hostname=app.hostname, ram=app.ram, image='dlcephgw01:5000/sshd', 
-        port_list=' '.join(map(lambda x: '-p ' + x, app.port_list)))
+        port_list=port_list, volume_list=volume_list) 
 
       self.logger.info("Starting up docker container on {host_server} with cmd: {docker_cmd}".format(
         host_server=app.host_server, docker_cmd=d))
 
-      salt_process = self.salt_client.cmd(app.host_server,'cmd.run', 
-        [d], expr_form='list')
+      salt_process = self.salt_client.cmd(app.host_server,'cmd.run', [d], expr_form='list')
       container_id = salt_process[app.host_server]
       if container_id:
         app.change_container_id(container_id)
@@ -148,34 +153,51 @@ class Manager(object):
         host_server=host_server,
         port=app.ssh_port))
 
-      ssh = paramiko.SSHClient()
-      ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-      ssh.connect(hostname=host_server, port=app.ssh_port, 
-        username='root', password='newroot')
+      try:
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.connect(hostname=host_server, port=app.ssh_port, 
+          username='root', password='newroot')
 
-      transport = paramiko.Transport((host_server, app.ssh_port))
-      transport.connect(username = 'root', password = 'newroot')
-      sftp = paramiko.SFTPClient.from_transport(transport)
-      sftp.put('bootstrap.sh', '/root/bootstrap.sh')
+        transport = paramiko.Transport((host_server, app.ssh_port))
+        transport.connect(username = 'root', password = 'newroot')
+        sftp = paramiko.SFTPClient.from_transport(transport)
+        sftp.put('bootstrap.sh', '/root/bootstrap.sh')
 
-      ssh.exec_command("chmod +x /root/bootstrap.sh")
-      stdin, stdout, stderr = ssh.exec_command("bash /root/bootstrap.sh")
-      self.logger.debug(''.join(stdout.readlines()))
-      ssh.close()
+        ssh.exec_command("chmod +x /root/bootstrap.sh")
+        stdin, stdout, stderr = ssh.exec_command("bash /root/bootstrap.sh")
+        self.logger.debug(''.join(stdout.readlines()))
+        ssh.close()
+      except SSHException:
+        self.logger.error("Failed to log into server.  Shutting it down and cleaning up the mess.")
+        self.delete_container(app.host_server, app.container_id)
+
+  # Stops and deletes a container
+  def delete_container(self, host_server, container_id):
+    results = self.salt_client.cmd(host_server, 'cmd.run', 
+      ['docker stop {container_id}'.format(container_id=container_id)], 
+      expr_form='list')
+    self.logger.debug("Salt return: {stop_cmd}".format(stop_cmd=results[host_server]))
+
+    results = self.salt_client.cmd(host_server, 'cmd.run', 
+      ['docker rm {container_id}'.format(container_id=container_id)], 
+      expr_form='list')
+    self.logger.debug("Salt return: {rm_cmd}".format(rm_cmd=results[host_server]))
 
   def create_containers(self, user, number, formation_name,
-    cpu_shares, ram, port_list, hostname_scheme):
+    cpu_shares, ram, port_list, hostname_scheme, volume_list):
 
     f = Formation(user, formation_name)
-    #Convert ram to bytes from mB
+    #Convert ram to bytes from MB
     ram = ram * 1024 * 1024
 
     #Get the cluster machines on each creation
     cluster_list = self.get_docker_cluster()
     circular_cluster_list = CircularList(self.order_cluster_by_load(cluster_list))
 
+    #Loop for the requested amount of containers to be created
     for i in range(1, number+1):
-      #[{"host_port":host_port, "container_port":container_port}]
+      #[{"host_port":ssh_host_port, "container_port":ssh_container_port}]
       ssh_host_port = 9022 + i
       ssh_container_port = 22
       host_server = circular_cluster_list[i].hostname
@@ -183,16 +205,25 @@ class Manager(object):
       while self.check_port_used(host_server, ssh_host_port):
         ssh_host_port = ssh_host_port +1
 
+      for port in port_list:
+        self.logger.info("Checking if port {port} on {host} is in use".format(
+          port=port, host=host_server))
+        if self.check_port_used(host_server, port):
+          raise ManagerError('port {port} on {host} is currently in use'.format(
+            host=host_server, port=port))
+
       self.logger.info('Adding app to formation {formation_name}: {hostname}{number} cpu_shares={cpu} '
         'ram={ram} ports={ports} host_server={host_server}'.format(formation_name=formation_name,
           hostname=hostname_scheme, number=str(i).zfill(3), cpu=cpu_shares, ram=ram, ports=port_list, 
           host_server=host_server))
 
       f.add_app(None, '{hostname}{number}'.format(hostname=hostname_scheme, number=str(i).zfill(3)), 
-        cpu_shares, ram, port_list, ssh_host_port, ssh_container_port, circular_cluster_list[i].hostname)
+        cpu_shares, ram, port_list, ssh_host_port, ssh_container_port, circular_cluster_list[i].hostname, volume_list)
 
     #Lets get this party started
     self.start_formation(f)
+    self.logger.info("Sleeping 2 seconds while the container starts")
+    time.sleep(2)
     self.bootstrap_formation(f)
 
     self.logger.info("Saving the formation to ETCD")
@@ -209,6 +240,9 @@ class TestManager(unittest.TestCase):
     self.assertEquals(1, 0)
 
   def test_orderClusterByLoad(self):
+    self.assertEquals(1, 0)
+
+  def test_deleteContainer(self):
     self.assertEquals(1, 0)
 
   def test_saveFormationToEtcd(self):
