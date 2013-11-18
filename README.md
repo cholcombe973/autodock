@@ -26,6 +26,13 @@ autodock -<u or username> -<f or formation> -<n or number> -<c or cpu_shares>
          -<r or ram> -<b or base_image?> -<h hostname_scheme> -<d or delete_formation>
 
 example: autodock -f owncloud -n 3 -c 100 -r 100M -h clwebdev
+Which will cause it to spin up three containers with a formation name of owncloud, 10% of the cpu allocated, 
+100MB of ram and a hostname of clweb001, clweb002, clweb003, and register this formation with the nginx 
+load balancers. The formation just means clweb001-003 all serve the owncloud web application. Once the 
+container starts up I'll ssh into each container, bootstrap salt and setup a salt-call cron job to setup 
+the container. All we need is to have a salt top.sls matcher in place to apply whatever changes we want. 
+Following our example it would be install nginx, install uwsgi, hg pull the latest from the repo, setup 
+the nginx hosts file and start both nginx and uwsgi.
 ```
 ### Description
 
@@ -42,9 +49,8 @@ example: autodock -f owncloud -n 3 -c 100 -r 100M -h clwebdev
 * -h, --hostname_scheme
     - A base hostname scheme to use for the containers. Ex: dlweb would produce containers with hostnames of dlweb001, dlweb002, etc.
 * -d, --delete_formation
-    - Delete a formation of containers all at once.
-Which will cause it to spin up three containers with a formation name of owncloud, 10% of the cpu allocated, 100MB of ram and a hostname of clweb001, clweb002, clweb003, and register this formation with the nginx load balancers. The formation just means clweb001-003 all serve the owncloud web application. Once the container starts up I'll ssh into each container, bootstrap salt and setup a salt-call cron job to setup the container. All we need is to have a salt top.sls matcher in place to apply whatever changes we want. Following our example it would be install nginx, install uwsgi, hg pull the latest from the repo, setup the nginx hosts file and start both nginx and uwsgi.
-
+    - Delete a formation of containers all at once.  
+  
 I'm also thinking a second command to ensure the cluster is ok like:  
 autodock -check_cluster  
 this could be cron job'd to run every x minutes to check every container is up and running on their hosts or migrate them if needed. It's crude but it's a place to start.
