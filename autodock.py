@@ -7,7 +7,7 @@ from manager import Manager
 def main():
   logger = logging.getLogger()
   stream = logging.StreamHandler(sys.stdout)
-  stream.setLevel(logging.INFO)
+  stream.setLevel(logging.DEBUG)
   formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
   stream.setFormatter(formatter)
   logger.addHandler(stream)
@@ -23,7 +23,7 @@ def main():
   parser.add_argument('-r', '--ram', type=int, help='Memory limit in megabytes. Default=100MB', default=100)
   parser.add_argument('-s', '--hostname_scheme', help='A base hostname scheme to use for the containers. Ex: dlweb '
     'would produce containers with hostnames of dlweb001, dlweb002, etc.', required=True)
-  parser.add_argument('-p', '--port', action='append', dest='port_list', help='Add ports to map to the container', default=[])
+  parser.add_argument('-p', '--port', action='append', dest='port_list', help='Add ports to map to the container. host-port:container-port.  If the : is missing then host-port and container port are assumed to be identical', default=[])
   parser.add_argument('-d', '--delete', type=bool, help='Delete a formation of containers all at once.')
   parser.add_argument('-v', '--volume', action='append', dest='volume_list', default=[], help='Create a bind mount. '
     'host-dir:container-dir:rw|ro. If "container-dir" is missing, then docker creates a new volume.')

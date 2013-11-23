@@ -35,7 +35,9 @@ class Manager(object):
   def check_port_used(self, host, port):
     self.logger.info("Checking if {port} on {host} is open with salt-client".format(
       host=host, port=port))
-    results = self.salt_client.cmd(host, 'cmd.run', ['lsof -i :%s' % port], expr_form='list')
+    results = self.salt_client.cmd(host, 'cmd.run', 
+      ['netstat -an | grep %s | grep -i listen' % port], 
+      expr_form='list')
     self.logger.debug("Salt return: {lsof}".format(lsof=results[host]))
 
     if results[host] is not '':
@@ -208,9 +210,16 @@ class Manager(object):
       for port in port_list:
         self.logger.info("Checking if port {port} on {host} is in use".format(
           port=port, host=host_server))
-        if self.check_port_used(host_server, port):
-          raise ManagerError('port {port} on {host} is currently in use'.format(
-            host=host_server, port=port))
+        if ':' in port:
+          ports = port.split(':')
+          #Only check if the host port is free.  The container port should be free
+          if self.check_port_used(host_server, ports[0]):
+            raise ManagerError('port {port} on {host} is currently in use'.format(
+              host=host_server, port=port))
+        else:
+          if self.check_port_used(host_server, ports[0]):
+            raise ManagerError('port {port} on {host} is currently in use'.format(
+              host=host_server, port=port))
 
       self.logger.info('Adding app to formation {formation_name}: {hostname}{number} cpu_shares={cpu} '
         'ram={ram} ports={ports} host_server={host_server}'.format(formation_name=formation_name,

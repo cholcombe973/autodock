@@ -45,6 +45,7 @@ class CircularList(list):
         return super(CircularList, self).__getitem__(index)
       except ValueError:
         raise TypeError
+
 class TestCircularList(unittest.TestCase):
   def test_cicular_list(self):
     self.assertEquals(1, 0)

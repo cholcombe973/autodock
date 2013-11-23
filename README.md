@@ -15,6 +15,7 @@ Autodock has a few requirements that need to be in place before it will function
 * Python Paramiko
 * [Etcd](https://github.com/coreos/etcd)
 * GoLang for Etcd to function
+* The docker base container
 
 ### Usage
 
@@ -23,7 +24,8 @@ Autodock has a few requirements that need to be in place before it will function
 Synopsis
 ```
 autodock -<u or username> -<f or formation> -<n or number> -<c or cpu_shares> 
-         -<r or ram> -<b or base_image?> -<h hostname_scheme> -<d or delete_formation>
+         -<r or ram> -<b or base_image?> -<h hostname_scheme> -<p or port>
+         -<v or volume> -<d or delete_formation>
 
 example: autodock -f owncloud -n 3 -c 100 -r 100M -h clwebdev
 Which will cause it to spin up three containers with a formation name of owncloud, 10% of the cpu allocated, 
@@ -46,12 +48,16 @@ the nginx hosts file and start both nginx and uwsgi.
     - A percentage of the cpu that the container is allowed to use. CPU shares (relative weight) is a number from 1-1024. 102 shares would equal 10% of the total cpu.
 * -r, --ram
     - Memory limit (in megabytes)
-* -h, --hostname_scheme
+* -s, --hostname_scheme
     - A base hostname scheme to use for the containers. Ex: dlweb would produce containers with hostnames of dlweb001, dlweb002, etc.
+* -p, --port
+    - Add ports to map to the container. host-port:container-port.  If the :is missing then host-port and container port are assumed to be identical
 * -d, --delete_formation
     - Delete a formation of containers all at once.  
+* -v, --volume
+    - Create a bind mount. host-dir:container-dir:rw|ro. If "container-dir" is missing, then docker creates a new volume.
   
-I'm also thinking a second command to ensure the cluster is ok like:  
+I'm also thinking of a second command to ensure the cluster is ok like:  
 autodock -check_cluster  
 this could be cron job'd to run every x minutes to check every container is up and running on their hosts or migrate them if needed. It's crude but it's a place to start.
 
@@ -92,4 +98,3 @@ The JSON object that stores container configurations looks like this:
 A directory for the username /cholcomb  
 A key for each formation: /cholcomb/owncloud and a value of:[ { "hostname": "owncloud01", "cpu-shares": 102, "ram": 100, "port": 8080, "host-server": "dldocker01", "mounts": [...]}, {...}]  
 A formation consists of a list of apps  
-

@@ -45,14 +45,17 @@ class Formation(object):
       STRING          host_server
       #LIST of        [host-dir]:[container-dir]:[rw|ro]
     '''
-    app = App(container_id, self.username, hostname, cpu_shares, ram, host_server, ssh_host_port)
+    app = App(container_id, self.username, hostname, cpu_shares, ram, host_server, ssh_host_port, volumes)
 
-    #TODO fix me, this logic is lame
     #For each port in the port_list add it to the app
     for port in port_list:
       #Check to see if the host port is free first?
       #Throw an error if it is or just increment it?
-      app.add_port_mapping(port, port)
+      if ':' in port:
+        port_list = port.split(':')
+        app.add_port_mapping(port_list[0], port_list[1])
+      else:
+        app.add_port_mapping(port, port)
 
     #Add the default SSH port mapping
     app.add_port_mapping(ssh_host_port, ssh_container_port)
