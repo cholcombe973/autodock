@@ -217,7 +217,7 @@ class Manager(object):
             raise ManagerError('port {port} on {host} is currently in use'.format(
               host=host_server, port=port))
         else:
-          if self.check_port_used(host_server, ports[0]):
+          if self.check_port_used(host_server, port[0]):
             raise ManagerError('port {port} on {host} is currently in use'.format(
               host=host_server, port=port))
 
