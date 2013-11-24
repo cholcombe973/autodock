@@ -36,7 +36,7 @@ class Manager(object):
     self.logger.info("Checking if {port} on {host} is open with salt-client".format(
       host=host, port=port))
     results = self.salt_client.cmd(host, 'cmd.run', 
-      ['netstat -an | grep %s | grep -i listen' % port], 
+      ['netstat -an | grep %s | grep tcp | grep -i listen' % port], 
       expr_form='list')
     self.logger.debug("Salt return: {lsof}".format(lsof=results[host]))
 
@@ -45,7 +45,7 @@ class Manager(object):
     else:
       return False
 
-  #TODO
+  # TODO
   def verify_formations(self):
     #call out to ETCD and load all the formations
     user_list = self.etcd.list_directory('formations')
@@ -165,9 +165,11 @@ class Manager(object):
         transport.connect(username = 'root', password = 'newroot')
         sftp = paramiko.SFTPClient.from_transport(transport)
         sftp.put('bootstrap.sh', '/root/bootstrap.sh')
+        sftp.put('start.sh', '/root/start.sh')
 
         ssh.exec_command("chmod +x /root/bootstrap.sh")
-        stdin, stdout, stderr = ssh.exec_command("bash /root/bootstrap.sh")
+        ssh.exec_command("chmod +x /root/start.sh")
+        stdin, stdout, stderr = ssh.exec_command("bash /root/start.sh")
         self.logger.debug(''.join(stdout.readlines()))
         ssh.close()
       except SSHException:
@@ -203,6 +205,7 @@ class Manager(object):
       ssh_host_port = 9022 + i
       ssh_container_port = 22
       host_server = circular_cluster_list[i].hostname
+      validated_ports = []
 
       while self.check_port_used(host_server, ssh_host_port):
         ssh_host_port = ssh_host_port +1
@@ -212,22 +215,28 @@ class Manager(object):
           port=port, host=host_server))
         if ':' in port:
           ports = port.split(':')
+
           #Only check if the host port is free.  The container port should be free
-          if self.check_port_used(host_server, ports[0]):
-            raise ManagerError('port {port} on {host} is currently in use'.format(
-              host=host_server, port=port))
+          while self.check_port_used(host_server, ports[0]):
+            ports[0] = int(ports[0]) + 1
+
+          #Add this to the validated port list
+          validated_ports.append('{host_port}:{container_port}'.format(
+            host_port = str(ports[0]),
+            container_port = str(ports[1])))
         else:
-          if self.check_port_used(host_server, port[0]):
-            raise ManagerError('port {port} on {host} is currently in use'.format(
-              host=host_server, port=port))
+          while self.check_port_used(host_server, port):
+            port = int(port) + 1
+          validated_ports.append(str(port))
 
       self.logger.info('Adding app to formation {formation_name}: {hostname}{number} cpu_shares={cpu} '
         'ram={ram} ports={ports} host_server={host_server}'.format(formation_name=formation_name,
-          hostname=hostname_scheme, number=str(i).zfill(3), cpu=cpu_shares, ram=ram, ports=port_list, 
-          host_server=host_server))
+          hostname=hostname_scheme, number=str(i).zfill(3), cpu=cpu_shares, ram=ram, 
+          ports=validated_ports, host_server=host_server))
 
-      f.add_app(None, '{hostname}{number}'.format(hostname=hostname_scheme, number=str(i).zfill(3)), 
-        cpu_shares, ram, port_list, ssh_host_port, ssh_container_port, circular_cluster_list[i].hostname, volume_list)
+      f.add_app(None, '{hostname}{number}'.format(hostname=hostname_scheme, 
+        number=str(i).zfill(3)), cpu_shares, ram, validated_ports, ssh_host_port, 
+        ssh_container_port, circular_cluster_list[i].hostname, volume_list)
 
     #Lets get this party started
     self.start_formation(f)
