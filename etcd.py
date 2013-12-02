@@ -63,7 +63,7 @@ class Etcd(object):
     response = requests.get(url)
     self.logger.debug('Response: ' + response.text)
 
-    res = response.json()
+    res = json.loads(response.text)
     if isinstance(res, list):
       raise ValueError('Key "%s" is a directory, expecting leaf (use \
 list_directory() to get directory listing).' % key)      
@@ -95,7 +95,7 @@ list_directory() to get directory listing).' % key)
     response = requests.get(url)
     if response.status_code == requests.codes.ok:
       directory_list = []
-      json_txt = response.json()
+      json_txt = json.loads(response.text)
       for entry in json_txt: 
         directory_list.append(str(entry['key']))
       return directory_list
@@ -106,7 +106,7 @@ list_directory() to get directory listing).' % key)
   def get_machines(self):
     url = '%(base)s/_etcd/machines' % {
       'base': self.url}
-    res = requests.get(url).json()
+    res = json.loads(requests.get(url).text)
 
     #Check to see if Etcd returned an error
     if 'errorCode' in res:

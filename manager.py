@@ -1,3 +1,4 @@
+import json
 import logging
 import paramiko
 from paramiko import SSHException
@@ -13,7 +14,7 @@ from formation import Formation
 from load import Load
 
 class ManagerError(BaseException):
-  #Generic manager error
+  # Generic manager error
   pass
 
 class Manager(object):
@@ -47,20 +48,56 @@ class Manager(object):
 
   # TODO
   def verify_formations(self):
-    #call out to ETCD and load all the formations
-    user_list = self.etcd.list_directory('formations')
-    print user_list
-    #for user in user_list:
-    #  formation_list = self.etcd.get_key('formations/' + user)
-    #  print formation_list
+    # Parse out the username and formation name 
+    # from the ETCD directory string
+    formation_parser = Literal('/formations/') + \
+      Word(alphas).setResultsName('username') + Literal('/') + \
+      Word(alphanums).setResultsName('formation_name')
 
-  #TODO
+    # call out to ETCD and load all the formations
+    formation_list = []
+
+    user_list = self.etcd.list_directory('formations')
+    if user_list:
+      for user in user_list:
+        username = user_parser.parseString(user)['username']
+        formation_list = self.etcd.list_directory(user)
+        for formation in formation_list:
+          users_formation = self.etcd.get_key(formation)
+          parse_results = formation_parse.parseString(formation)
+          if parse_results:
+            formation_name = parseResults['formation_name']
+            username = parseResults['username']
+            f = self.load_formation_from_etcd(username, formation_name)
+            formation_list.append(f)
+          else:
+            self.logger.error("Could not parse the ETCD string")
+            raise ManagerError("Could not parse the ETCD string returned "
+              "{ret_string}".format(ret_string=formation))
+
+      if formation_list:
+        # This is where things get tricky
+        # Start verifying things
+        # Ask salt to do these things for me and give me back an job_id
+        # results = self.salt_client.cmd_async(host, 'cmd.run', 
+        #   ['netstat -an | grep %s | grep tcp | grep -i listen' % port], 
+        #   expr_form='list')
+        # 
+        # salt-run jobs.lookup_jid <job id number>
+        for f in formation_list:
+          for app in f.application_list:
+            # Check to make sure it's up and running
+            self.logger.info("Running verifcation on formation: "
+              "{formation_name}".format(formation_name=f.name))
+            pass
+
+  # TODO
   def check_for_existing_formation(self, formation_name):
-    #If the user passed in an existing formation name lets append to it
+    # If the user passed in an existing formation name lets append to it
     pass
 
   def get_docker_cluster(self):
-    #Return a list of docker hosts
+    # Return a list of docker hosts
     cluster = self.etcd.get_key('docker_cluster')
     if cluster is not None:
       return cluster.split(',')
@@ -68,7 +105,7 @@ class Manager(object):
       return None
 
   def get_load_balancer_cluster(self):
-    #Return a list of nginx hosts
+    # Return a list of nginx hosts
     cluster = self.etcd.get_key('nginx_cluster')
     if cluster is not None:
       return cluster.split(',')
@@ -76,8 +113,8 @@ class Manager(object):
       return None
 
   def order_cluster_by_load(self, cluster_list):
-    #Sample salt output
-    #{'dlceph01.drwg.local': '0.27 0.16 0.15 1/1200 26234'}
+    # Sample salt output
+    # {'dlceph01.drwg.local': '0.27 0.16 0.15 1/1200 26234'}
 
     # define grammar
     point = Literal('.')
@@ -102,16 +139,25 @@ class Manager(object):
       else:
         self.logger.error("Could not parse host load output")
 
-    #Sort the list by fifteen min load
+    # Sort the list by fifteen min load
     load_list = sorted(load_list, key=lambda x: x.fifteen_min_load)
     for load in load_list:
       self.logger.debug("Sorted load list: " + str(load))
 
     return load_list
 
-  #TODO load the formation and return a Formation object
+  # Load the formation and return a Formation object
   def load_formation_from_etcd(self, username, formation_name):
-    pass
+    f = Formation(username,formation_name) 
+    app_list = json.loads(json.loads(
+      self.etcd.get_key('/formations/{username}/{formation_name}'.format(
+        username=username, formation_name=formation_name))))
+    for app in app_list:
+      f.add_app(app['container_id'], app['hostname'], app['cpu_shares'],
+        app['ram'], app['port_list]', app['ssh_port'], 22, app['host_server'])
+
+    # Return fully parsed and populated formation object
+    return f
 
   def save_formation_to_etcd(self, formation):
     name = formation.name
@@ -120,12 +166,12 @@ class Manager(object):
     self.etcd.set_key('formations/{username}/{formation_name}'.format(
       username=username, formation_name=name), formation)
 
-  #TODO write code to add new container(s) to load balancer
+  # TODO write code to add new container(s) to load balancer
   def add_app_to_nginx(self, app):
     pass
 
   def start_formation(self, formation):
-    #Run a salt cmd to startup the formation
+    # Run a salt cmd to startup the formation
     docker_command = "docker run -c={cpu_shares} -d -h=\"{hostname}\" -m={ram} "\
       "-name=\"{hostname}\" {port_list} {volume_list} {image} /usr/sbin/sshd -D"
 
@@ -147,7 +193,7 @@ class Manager(object):
 
   def bootstrap_formation(self, f):
     for app in f.application_list:
-      #Log into the host with paramiko and run the salt bootstrap script 
+      # Log into the host with paramiko and run the salt bootstrap script 
       host_server = self.fqdn_to_shortname(app.host_server)
 
       self.logger.info("Bootstrapping {hostname} on server: {host_server} port: {port}".format(
@@ -192,16 +238,16 @@ class Manager(object):
     cpu_shares, ram, port_list, hostname_scheme, volume_list):
 
     f = Formation(user, formation_name)
-    #Convert ram to bytes from MB
+    # Convert ram to bytes from MB
     ram = ram * 1024 * 1024
 
-    #Get the cluster machines on each creation
+    # Get the cluster machines on each creation
     cluster_list = self.get_docker_cluster()
     circular_cluster_list = CircularList(self.order_cluster_by_load(cluster_list))
 
-    #Loop for the requested amount of containers to be created
+    # Loop for the requested amount of containers to be created
     for i in range(1, number+1):
-      #[{"host_port":ssh_host_port, "container_port":ssh_container_port}]
+      # [{"host_port":ssh_host_port, "container_port":ssh_container_port}]
       ssh_host_port = 9022 + i
       ssh_container_port = 22
       host_server = circular_cluster_list[i].hostname
@@ -216,11 +262,11 @@ class Manager(object):
         if ':' in port:
           ports = port.split(':')
 
-          #Only check if the host port is free.  The container port should be free
+          # Only check if the host port is free.  The container port should be free
           while self.check_port_used(host_server, ports[0]):
             ports[0] = int(ports[0]) + 1
 
-          #Add this to the validated port list
+          # Add this to the validated port list
           validated_ports.append('{host_port}:{container_port}'.format(
             host_port = str(ports[0]),
             container_port = str(ports[1])))
@@ -238,7 +284,7 @@ class Manager(object):
         number=str(i).zfill(3)), cpu_shares, ram, validated_ports, ssh_host_port, 
         ssh_container_port, circular_cluster_list[i].hostname, volume_list)
 
-    #Lets get this party started
+    # Lets get this party started
     self.start_formation(f)
     self.logger.info("Sleeping 2 seconds while the container starts")
     time.sleep(2)
