@@ -56,6 +56,8 @@ the nginx hosts file and start both nginx and uwsgi.
     - Delete a formation of containers all at once.  
 * -v, --volume
     - Create a bind mount. host-dir:container-dir:rw|ro. If "container-dir" is missing, then docker creates a new volume.
+* -x, --verify
+    - Verify that the cluster is in the correct state and move containers around that are on dead hosts.
   
 I'm also thinking of a second command to ensure the cluster is ok like:  
 autodock -check_cluster  
