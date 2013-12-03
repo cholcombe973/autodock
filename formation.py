@@ -18,10 +18,12 @@ class Formation(object):
       {...}]
   '''
 
-  def __init__(self, username, name):
+  def __init__(self, username, name, url_to_serve=None):
     self.application_list = []
     self.name = name
     self.username = username
+    # The url that should be added to the load balancer for the apps to serve up
+    self.url_to_serve = url_to_serve
 
   def add_app(self,
     container_id,
@@ -45,7 +47,8 @@ class Formation(object):
       STRING          host_server
       #LIST of        [host-dir]:[container-dir]:[rw|ro]
     '''
-    app = App(container_id, self.username, hostname, cpu_shares, ram, host_server, ssh_host_port, volumes)
+    app = App(container_id, self.username, hostname, cpu_shares, ram, 
+      host_server, ssh_host_port, volumes)
 
     #For each port in the port_list add it to the app
     for port in port_list:

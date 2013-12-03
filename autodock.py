@@ -3,6 +3,7 @@ import logging
 import sys
 
 from manager import Manager
+from verify import VerifyFormations
 
 def main():
   logger = logging.getLogger()
@@ -12,6 +13,8 @@ def main():
   stream.setFormatter(formatter)
   logger.addHandler(stream)
 
+  # TODO This needs to be broken up into sub command parsers
+  # http://docs.python.org/dev/library/argparse.html#sub-commands
   parser = argparse.ArgumentParser(description='Autodock. The docker container automation tool.')
   parser.add_argument('-u', '--username', required=True, help='The username for the formation')
   parser.add_argument('-f', '--formation', help='A Formation is a set of '\
@@ -27,14 +30,19 @@ def main():
   parser.add_argument('-d', '--delete', type=bool, help='Delete a formation of containers all at once.')
   parser.add_argument('-v', '--volume', action='append', dest='volume_list', default=[], help='Create a bind mount. '
     'host-dir:container-dir:rw|ro. If "container-dir" is missing, then docker creates a new volume.')
+  parser.add_argument('-x', '--verify', action='store_true', dest='verify_formations', default=False)
 
   args = parser.parse_args()
 
-  m = Manager(logger)
-  m.create_containers(args.username,
-    args.number, args.formation, args.cpu_shares, args.ram,
-    args.port_list, args.hostname_scheme, args.volume_list)
-  return 0
+  if args.verify_formations:
+    v = VerifyFormations(logger)
+    v.start_verifying()
+  else:
+    m = Manager(logger)
+    m.create_containers(args.username,
+      args.number, args.formation, args.cpu_shares, args.ram,
+      args.port_list, args.hostname_scheme, args.volume_list)
+    return 0
 
 if __name__ == "__main__":
   sys.exit(main())

@@ -1,3 +1,5 @@
+import unittest
+
 class App(object):
   '''
     An app or application has a hostname,
@@ -40,3 +42,13 @@ class App(object):
       'ram': self.ram, 'port_list': self.port_list, 
       'host_server': self.host_server, 'volumes': self.volume_list,
       'ssh_port': self.ssh_port}
+
+class TestApp(unittest.TestCase):
+  def test_json_output(self):
+    expected_results = {'container_id': 'test',
+      'username': 'joe_user', 'hostname': 'test001', 'cpu_shares': 100,
+      'ram': 100, 'port_list': [], 'host_server': 'test_server', 
+      'volumes': ['/mnt/vol/test_vol'], 'ssh_port': 22}
+    a = App('test', 'joe_user', 'test001', 100, 100, 'test_server', 22, 
+      ['/mnt/vol/test_vol'])
+    self.assertEqual(expected_results, a.get_json())

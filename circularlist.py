@@ -47,5 +47,12 @@ class CircularList(list):
         raise TypeError
 
 class TestCircularList(unittest.TestCase):
-  def test_cicular_list(self):
-    self.assertEquals(1, 0)
+  def test_cicular_list_wrap_forward(self):
+    cl = CircularList([1,2,3])
+    #make sure it wraps properly
+    self.assertEqual(cl[3], 1)
+
+  def test_cicular_list_wrap_backward(self):
+    cl = CircularList([1,2,3])
+    #make sure it wraps properly
+    self.assertEqual(cl[-1], 3)

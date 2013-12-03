@@ -1,4 +1,3 @@
-import json
 import logging
 import paramiko
 from paramiko import SSHException
@@ -45,51 +44,6 @@ class Manager(object):
       return True
     else:
       return False
-
-  # TODO
-  def verify_formations(self):
-    # Parse out the username and formation name 
-    # from the ETCD directory string
-    formation_parser = Literal('/formations/') + \
-      Word(alphas).setResultsName('username') + Literal('/') + \
-      Word(alphanums).setResultsName('formation_name')
-
-    # call out to ETCD and load all the formations
-    formation_list = []
-
-    user_list = self.etcd.list_directory('formations')
-    if user_list:
-      for user in user_list:
-        username = user_parser.parseString(user)['username']
-        formation_list = self.etcd.list_directory(user)
-        for formation in formation_list:
-          users_formation = self.etcd.get_key(formation)
-          parse_results = formation_parse.parseString(formation)
-          if parse_results:
-            formation_name = parseResults['formation_name']
-            username = parseResults['username']
-            f = self.load_formation_from_etcd(username, formation_name)
-            formation_list.append(f)
-          else:
-            self.logger.error("Could not parse the ETCD string")
-            raise ManagerError("Could not parse the ETCD string returned "
-              "{ret_string}".format(ret_string=formation))
-
-      if formation_list:
-        # This is where things get tricky
-        # Start verifying things
-        # Ask salt to do these things for me and give me back an job_id
-        # results = self.salt_client.cmd_async(host, 'cmd.run', 
-        #   ['netstat -an | grep %s | grep tcp | grep -i listen' % port], 
-        #   expr_form='list')
-        # 
-        # salt-run jobs.lookup_jid <job id number>
-        for f in formation_list:
-          for app in f.application_list:
-            # Check to make sure it's up and running
-            self.logger.info("Running verifcation on formation: "
-              "{formation_name}".format(formation_name=f.name))
-            pass
 
   # TODO
   def check_for_existing_formation(self, formation_name):
@@ -145,19 +99,6 @@ class Manager(object):
       self.logger.debug("Sorted load list: " + str(load))
 
     return load_list
-
-  # Load the formation and return a Formation object
-  def load_formation_from_etcd(self, username, formation_name):
-    f = Formation(username,formation_name) 
-    app_list = json.loads(json.loads(
-      self.etcd.get_key('/formations/{username}/{formation_name}'.format(
-        username=username, formation_name=formation_name))))
-    for app in app_list:
-      f.add_app(app['container_id'], app['hostname'], app['cpu_shares'],
-        app['ram'], app['port_list]', app['ssh_port'], 22, app['host_server'])
-
-    # Return fully parsed and populated formation object
-    return f
 
   def save_formation_to_etcd(self, formation):
     name = formation.name
