@@ -25,7 +25,7 @@ Synopsis
 ```
 autodock -<u or username> -<f or formation> -<n or number> -<c or cpu_shares> 
          -<r or ram> -<b or base_image?> -<h hostname_scheme> -<p or port>
-         -<v or volume> -<d or delete_formation>
+         -<v or volume> -<d or delete_formation> -<x or verify>
 
 example: autodock -f owncloud -n 3 -c 100 -r 100M -h clwebdev
 Which will cause it to spin up three containers with a formation name of owncloud, 10% of the cpu allocated, 
