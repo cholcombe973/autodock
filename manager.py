@@ -107,61 +107,67 @@ class Manager(object):
     self.etcd.set_key('formations/{username}/{formation_name}'.format(
       username=username, formation_name=name), formation)
 
-  # TODO write code to add new container(s) to load balancer
+  # TODO write code to add new apps to load balancer
   def add_app_to_nginx(self, app):
     pass
 
-  def start_formation(self, formation):
+  # TODO write code to add new apps to the load balancer
+  def add_app_to_apache(self, app):
+    pass
+
+  def start_application(self, app):
     # Run a salt cmd to startup the formation
     docker_command = "docker run -c={cpu_shares} -d -h=\"{hostname}\" -m={ram} "\
       "-name=\"{hostname}\" {port_list} {volume_list} {image} /usr/sbin/sshd -D"
 
-    for app in formation.application_list:
-      port_list = ' '.join(map(lambda x: '-p ' + x, app.port_list))
+    port_list = ' '.join(map(lambda x: '-p ' + x, app.port_list))
+
+    # Only create this list if needed
+    volume_list = ''
+    if app.volume_list:
       volume_list = ' '.join(map(lambda x: '-v ' + x, app.volume_list))
 
-      d = docker_command.format(cpu_shares=app.cpu_shares, 
-        hostname=app.hostname, ram=app.ram, image='dlcephgw01:5000/sshd', 
-        port_list=port_list, volume_list=volume_list) 
+    d = docker_command.format(cpu_shares=app.cpu_shares, 
+      hostname=app.hostname, ram=app.ram, image='dlcephgw01:5000/sshd', 
+      port_list=port_list, volume_list=volume_list) 
 
-      self.logger.info("Starting up docker container on {host_server} with cmd: {docker_cmd}".format(
-        host_server=app.host_server, docker_cmd=d))
+    self.logger.info("Starting up docker container on {host_server} with cmd: {docker_cmd}".format(
+      host_server=app.host_server, docker_cmd=d))
 
-      salt_process = self.salt_client.cmd(app.host_server,'cmd.run', [d], expr_form='list')
-      container_id = salt_process[app.host_server]
-      if container_id:
-        app.change_container_id(container_id)
+    salt_process = self.salt_client.cmd(app.host_server,'cmd.run', [d], expr_form='list')
+    container_id = salt_process[app.host_server]
+    if container_id:
+      app.change_container_id(container_id)
 
-  def bootstrap_formation(self, f):
-    for app in f.application_list:
-      # Log into the host with paramiko and run the salt bootstrap script 
-      host_server = self.fqdn_to_shortname(app.host_server)
+  def bootstrap_application(self, app):
+    # Log into the host with paramiko and run the salt bootstrap script 
+    host_server = self.fqdn_to_shortname(app.host_server)
 
-      self.logger.info("Bootstrapping {hostname} on server: {host_server} port: {port}".format(
-        hostname=app.hostname, 
-        host_server=host_server,
-        port=app.ssh_port))
+    self.logger.info("Bootstrapping {hostname} on server: {host_server} port: {port}".format(
+      hostname=app.hostname, 
+      host_server=host_server,
+      port=app.ssh_port))
 
-      try:
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(hostname=host_server, port=app.ssh_port, 
-          username='root', password='newroot')
+    try:
+      ssh = paramiko.SSHClient()
+      ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+      ssh.connect(hostname=host_server, port=app.ssh_port, 
+        username='root', password='newroot')
 
-        transport = paramiko.Transport((host_server, app.ssh_port))
-        transport.connect(username = 'root', password = 'newroot')
-        sftp = paramiko.SFTPClient.from_transport(transport)
-        sftp.put('bootstrap.sh', '/root/bootstrap.sh')
-        sftp.put('start.sh', '/root/start.sh')
+      transport = paramiko.Transport((host_server, app.ssh_port))
+      transport.connect(username = 'root', password = 'newroot')
+      sftp = paramiko.SFTPClient.from_transport(transport)
+      sftp.put('bootstrap.sh', '/root/bootstrap.sh')
+      sftp.put('start.sh', '/root/start.sh')
 
-        ssh.exec_command("chmod +x /root/bootstrap.sh")
-        ssh.exec_command("chmod +x /root/start.sh")
-        stdin, stdout, stderr = ssh.exec_command("bash /root/start.sh")
-        self.logger.debug(''.join(stdout.readlines()))
-        ssh.close()
-      except SSHException:
-        self.logger.error("Failed to log into server.  Shutting it down and cleaning up the mess.")
-        self.delete_container(app.host_server, app.container_id)
+      ssh.exec_command("chmod +x /root/bootstrap.sh")
+      ssh.exec_command("chmod +x /root/start.sh")
+      stdin, stdout, stderr = ssh.exec_command("bash /root/start.sh")
+      self.logger.debug(''.join(stdout.readlines()))
+      ssh.close()
+    except SSHException:
+      self.logger.error("Failed to log into server.  Shutting it down and cleaning up the mess.")
+      self.delete_container(app.host_server, app.container_id)
 
   # Stops and deletes a container
   def delete_container(self, host_server, container_id):
@@ -226,10 +232,11 @@ class Manager(object):
         ssh_container_port, circular_cluster_list[i].hostname, volume_list)
 
     # Lets get this party started
-    self.start_formation(f)
-    self.logger.info("Sleeping 2 seconds while the container starts")
-    time.sleep(2)
-    self.bootstrap_formation(f)
+    for app in f.application_list:
+      self.start_application(f)
+      self.logger.info("Sleeping 2 seconds while the container starts")
+      time.sleep(2)
+      self.bootstrap_application(app)
 
     self.logger.info("Saving the formation to ETCD")
     self.save_formation_to_etcd(f)
