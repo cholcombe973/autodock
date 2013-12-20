@@ -2,6 +2,7 @@ import argparse
 import logging
 import sys
 
+from appbackup import AppBackup
 from manager import Manager
 from verify import VerifyFormations
 
@@ -21,6 +22,15 @@ def main():
   # create a parser for the "verify" command
   subparsers.add_parser('verify',
     help='Verify the formations in the cluster are working properly.')
+
+  # create a parser for the "backup" command
+  backup_parser = subparsers.add_parser('backup',
+    help='Backup the formation specified by username and formation name.')
+  backup_parser.add_argument('-u', '--username', required=True, 
+    help='The username for the formation')
+  backup_parser.add_argument('-f', '--formation', help='A Formation is a set of'
+      ' infrastructure used to host Applications. Each formation includes Nodes'
+      'that provide different services to the formation.', required=True)
 
   # create a parser and args for the "create" command
   create_parser = subparsers.add_parser('create', help='Create a new formation')
@@ -52,6 +62,10 @@ def main():
       ': is missing then host-port and container port are assumed to be '
       'identical', default=[])
 
+  create_parser.add_argument('-z', '--host_server', dest='host_server',
+    help='Force the application to be put on a particular host server',
+    default=None)
+
   create_parser.add_argument('-d', '--delete', type=bool, 
     help='Delete a formation of containers all at once.')
 
@@ -67,11 +81,16 @@ def main():
     logger.info('Verifying the formation') 
     v = VerifyFormations(m, logger)
     v.start_verifying()
+  elif args.mode == 'backup':
+    logger.info('Backing up a formation')
+    b = AppBackup(m, logger)
+    b.backup_formation(args.username, args.formation)
   else:
     logger.info('Creating a new formation')
     m.create_containers(args.username,
       args.number, args.formation, args.cpu_shares, args.ram,
-      args.port_list, args.hostname_scheme, args.volume_list)
+      args.port_list, args.hostname_scheme, args.volume_list, 
+      args.host_server)
     return 0
 
 if __name__ == "__main__":

@@ -5,14 +5,12 @@
   3. Verifies a container has cron running.  Calls start.sh if needed.
 
 '''
-import json
 import paramiko
 import salt.client
 import time
 
 from circularlist import CircularList
 from etcd import Etcd
-from formation import Formation
 from paramiko import SSHException
 from pyparsing import alphas, Literal, srange, Word
 
@@ -46,7 +44,7 @@ class VerifyFormations(object):
             self.logger.info('Attempting to load formation: {formation_name} '
               'with username: {username}'.format(formation_name=formation_name,
                 username=username))
-            f = self.load_formation_from_etcd(username, formation_name)
+            f = self.manager.load_formation_from_etcd(username, formation_name)
             formation_list.append(f)
           else:
             self.logger.error("Could not parse the ETCD string")
@@ -166,28 +164,3 @@ class VerifyFormations(object):
       self.logger.error("Failed to log into server.  Shutting it down and "\
         "cleaning up the mess.")
       self.delete_container(app.host_server, app.container_id)
-
-  # Load the formation and return a Formation object
-  def load_formation_from_etcd(self, username, formation_name):
-    f = Formation(username,formation_name) 
-    app_list = json.loads(json.loads(
-      self.etcd.get_key('/formations/{username}/{formation_name}'.format(
-        username=username, formation_name=formation_name))))
-    for app in app_list:
-      # If our host doesn't support swapping we're going to get some garbage 
-      # message in here
-      if "WARNING" in app['container_id']:
-        app['container_id'] = app['container_id'].replace("WARNING: Your "\
-          "kernel does not support memory swap capabilities. Limitation discarded.\n","")
-
-      # Set volumes if needed
-      volumes = None
-      if app['volumes']:
-        self.logger.info("Setting volumes to: " + ''.join(app['volumes']))
-        volumes = app['volumes']
-
-      f.add_app(app['container_id'], app['hostname'], app['cpu_shares'],
-        app['ram'], app['port_list'], app['ssh_port'], 22, app['host_server'], volumes)
-
-    # Return fully parsed and populated formation object
-    return f

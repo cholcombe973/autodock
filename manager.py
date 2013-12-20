@@ -1,3 +1,4 @@
+import json
 import logging
 import paramiko
 from paramiko import SSHException
@@ -100,6 +101,31 @@ class Manager(object):
 
     return load_list
 
+  # Load the formation and return a Formation object
+  def load_formation_from_etcd(self, username, formation_name):
+    f = Formation(username,formation_name) 
+    app_list = json.loads(json.loads(
+      self.etcd.get_key('/formations/{username}/{formation_name}'.format(
+        username=username, formation_name=formation_name))))
+    for app in app_list:
+      # If our host doesn't support swapping we're going to get some garbage 
+      # message in here
+      if "WARNING" in app['container_id']:
+        app['container_id'] = app['container_id'].replace("WARNING: Your "\
+          "kernel does not support memory swap capabilities. Limitation discarded.\n","")
+
+      # Set volumes if needed
+      volumes = None
+      if app['volumes']:
+        self.logger.info("Setting volumes to: " + ''.join(app['volumes']))
+        volumes = app['volumes']
+
+      f.add_app(app['container_id'], app['hostname'], app['cpu_shares'],
+        app['ram'], app['port_list'], app['ssh_port'], 22, app['host_server'], volumes)
+
+    # Return fully parsed and populated formation object
+    return f
+
   def save_formation_to_etcd(self, formation):
     name = formation.name
     username = formation.username
@@ -120,6 +146,7 @@ class Manager(object):
     docker_command = "docker run -c={cpu_shares} -d -h=\"{hostname}\" -m={ram} "\
       "-name=\"{hostname}\" {port_list} {volume_list} {image} /usr/sbin/sshd -D"
 
+    self.logger.info("Port list %s" % app.port_list)
     port_list = ' '.join(map(lambda x: '-p ' + x, app.port_list))
 
     # Only create this list if needed
@@ -182,7 +209,8 @@ class Manager(object):
     self.logger.debug("Salt return: {rm_cmd}".format(rm_cmd=results[host_server]))
 
   def create_containers(self, user, number, formation_name,
-    cpu_shares, ram, port_list, hostname_scheme, volume_list):
+    cpu_shares, ram, port_list, hostname_scheme, volume_list, 
+    force_host_server=None):
 
     f = Formation(user, formation_name)
     # Convert ram to bytes from MB
@@ -198,6 +226,9 @@ class Manager(object):
       ssh_host_port = 9022 + i
       ssh_container_port = 22
       host_server = circular_cluster_list[i].hostname
+      # We are being asked to overwrite this
+      if force_host_server:
+        host_server = force_host_server
       validated_ports = []
 
       while self.check_port_used(host_server, ssh_host_port):
@@ -233,7 +264,7 @@ class Manager(object):
 
     # Lets get this party started
     for app in f.application_list:
-      self.start_application(f)
+      self.start_application(app)
       self.logger.info("Sleeping 2 seconds while the container starts")
       time.sleep(2)
       self.bootstrap_application(app)
