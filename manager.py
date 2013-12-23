@@ -2,7 +2,7 @@ import json
 import logging
 import paramiko
 from paramiko import SSHException
-from pyparsing import Combine, Literal, OneOrMore, nums, Word
+from pyparsing import alphas, Combine, Literal, OneOrMore, nums, srange, Word
 import salt.client
 import sys
 import time
@@ -26,6 +26,11 @@ class Manager(object):
     self.salt_client = salt.client.LocalClient()
     self.etcd = Etcd(logger)
     self.logger = logger
+    # Parse out the username and formation name 
+    # from the ETCD directory string
+    self.formation_parser = Literal('/formations/') + \
+      Word(alphas).setResultsName('username') + Literal('/') + \
+      Word(srange("[0-9a-zA-Z_-]")).setResultsName('formation_name')
 
   def fqdn_to_shortname(self, fqdn):
     if '.' in fqdn:
@@ -100,6 +105,21 @@ class Manager(object):
       self.logger.debug("Sorted load list: " + str(load))
 
     return load_list
+
+  # Retun a list of formations the user owns
+  def list_formations(self, username):
+    formation_list = []
+    formations = self.etcd.list_directory('formations/'+username)
+    for formation in formations:
+      parse_results = self.formation_parser.parseString(formation)
+      if parse_results:
+        formation_name = parse_results['formation_name']
+        formation_list.append(formation_name)
+      else:
+        self.logger.error("Could not parse the ETCD string")
+    self.logger.info('Formation list {formations} for user {user}'.format(
+      formations=formation_list, user=username))
+    return formation_list
 
   # Load the formation and return a Formation object
   def load_formation_from_etcd(self, username, formation_name):
