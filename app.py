@@ -7,7 +7,7 @@ class App(object):
     it runs on.
   '''
   def __init__(self, container_id, username, hostname, 
-    cpu_shares, ram, host_server, ssh_port, volume_list=None):
+    cpu_shares, ram, host_server, docker_image, ssh_port, volume_list=None):
 
     self.container_id = container_id
     self.username = username
@@ -16,6 +16,7 @@ class App(object):
     self.ram = int(ram)
     self.port_list = []
     self.host_server = host_server
+    self.docker_image = docker_image
     self.volume_list = volume_list
     self.ssh_port = int(ssh_port)
 
@@ -30,6 +31,9 @@ class App(object):
 
   def change_cpu_shares(self, new_cpu_shares):
     self.cpu_shares = int(new_cpu_shares)
+
+  def change_docker_image(self, new_docker_image):
+    self.docker_image = new_docker_image
 
   def add_port_mapping(self, host_port, container_port):
     port_map = "{host_port}:{container_port}".format(host_port=host_port,

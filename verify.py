@@ -63,6 +63,9 @@ class VerifyFormations(object):
             # Check to make sure it's up and running
             self.logger.info("Running verification on app: "
               "{app_name}".format(app_name=app.hostname))
+            self.logger.info('{server} docker ps | grep {container_id}'.format(
+              server=app.host_server, 
+              container_id=app.container_id))
             results = self.salt_client.cmd(app.host_server, 'cmd.run', 
               ['docker ps | grep {container_id}'.format(container_id=app.container_id)], 
               expr_form='list')
@@ -80,6 +83,8 @@ class VerifyFormations(object):
                 # Check if cron is running on the container and bring it back 
                 # up if needed
                 # Log in with ssh and check if cron is up and running
+                self.logger.info("Sleeping 2 seconds while the container starts")
+                time.sleep(2)
                 self.check_running_application(app)
             else:
               self.logger.error("Call out to server {server} failed. Moving it".format(
@@ -110,6 +115,8 @@ class VerifyFormations(object):
         self.logger.error("Container failed to start")
         self.move_application(app)
       else:
+        self.logger.info("Waiting 2 seconds for docker to start the container")
+        time.sleep(2)
         self.check_running_application(app)
     else:
       # Move the container to another host, this host is messed up
@@ -145,6 +152,8 @@ class VerifyFormations(object):
       ssh = paramiko.SSHClient()
       ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
       # Move this user/pass into a config file
+      self.logger.info('SSHing into host {hostname}:{port}'.format(
+        hostname=app.host_server, port=app.ssh_port))
       ssh.connect(hostname=app.host_server, port=app.ssh_port, 
         username='root', password='newroot')
       # Is cron running?
@@ -158,7 +167,7 @@ class VerifyFormations(object):
         self.logger.info("Cron is not running.  Starting it back up")
         stdin, stdout, stderr = ssh.exec_command("/root/start.sh")
       else:
-        self.logger.info("Cron is running. Exiting")
+        self.logger.info("Cron is running.")
       ssh.close()
     except SSHException:
       self.logger.error("Failed to log into server.  Shutting it down and "\

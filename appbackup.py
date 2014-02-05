@@ -3,6 +3,7 @@
 '''
 import salt.client
 
+from datetime import datetime
 from etcd import Etcd
 
 class AppBackup(object):
@@ -28,13 +29,18 @@ class AppBackup(object):
         if "Error: No such container" in results[app.host_server]:
           self.logger.error('Could not find container')
         else:
+          current_date = datetime.now()
           commit_id = results[app.host_server]
           self.logger.info('Running save on {hostname}'.format(
             hostname=app.hostname))
           self.salt_client.cmd(app.host_server, 'cmd.run', 
             ['docker save {image_id} > /mnt/ceph/docker_customer_backups/'
-              '{hostname}.tar'.format(
-                image_id=commit_id[0:12], hostname=app.hostname)], 
+              '{hostname}.{year}-{month}-{day}.tar'.format(
+                image_id=commit_id[0:12], 
+                year=current_date.year,
+                month=current_date.month,
+                day=current_date.day,
+                hostname=app.hostname)], 
             expr_form='list', timeout=600)
           self.logger.info('Cleaning up the commit image')
           self.salt_client.cmd(app.host_server, 'cmd.run',

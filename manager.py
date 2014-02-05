@@ -175,7 +175,7 @@ class Manager(object):
       volume_list = ' '.join(map(lambda x: '-v ' + x, app.volume_list))
 
     d = docker_command.format(cpu_shares=app.cpu_shares, 
-      hostname=app.hostname, ram=app.ram, image='dlcephgw01:5000/sshd', 
+      hostname=app.hostname, ram=app.ram, image=app.docker_image, 
       port_list=port_list, volume_list=volume_list) 
 
     self.logger.info("Starting up docker container on {host_server} with cmd: {docker_cmd}".format(
@@ -228,9 +228,20 @@ class Manager(object):
       expr_form='list')
     self.logger.debug("Salt return: {rm_cmd}".format(rm_cmd=results[host_server]))
 
+  # Stops and deletes a formation. Use with caution
+  def delete_formation(self, user, formation_name):
+    formation_list = self.list_formations(user)
+    if formation_name in formation_list:
+      pass
+    else:
+      self.logger.error("Formation name not found!")
+
+  def list_containers(self, user, formation_name):
+    pass
+
   def create_containers(self, user, number, formation_name,
     cpu_shares, ram, port_list, hostname_scheme, volume_list, 
-    force_host_server=None):
+    docker_image, force_host_server=None):
 
     f = Formation(user, formation_name)
     # Convert ram to bytes from MB
@@ -274,13 +285,14 @@ class Manager(object):
           validated_ports.append(str(port))
 
       self.logger.info('Adding app to formation {formation_name}: {hostname}{number} cpu_shares={cpu} '
-        'ram={ram} ports={ports} host_server={host_server}'.format(formation_name=formation_name,
-          hostname=hostname_scheme, number=str(i).zfill(3), cpu=cpu_shares, ram=ram, 
-          ports=validated_ports, host_server=host_server))
+        'ram={ram} ports={ports} host_server={host_server} docker_image={docker_image}'.format(
+          formation_name=formation_name, hostname=hostname_scheme, number=str(i).zfill(3), 
+          cpu=cpu_shares, ram=ram, ports=validated_ports, host_server=host_server,
+          docker_image=docker_image))
 
       f.add_app(None, '{hostname}{number}'.format(hostname=hostname_scheme, 
         number=str(i).zfill(3)), cpu_shares, ram, validated_ports, ssh_host_port, 
-        ssh_container_port, circular_cluster_list[i].hostname, volume_list)
+        ssh_container_port, host_server, docker_image, volume_list)
 
     # Lets get this party started
     for app in f.application_list:

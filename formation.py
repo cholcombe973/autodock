@@ -34,6 +34,7 @@ class Formation(object):
     ssh_host_port, 
     ssh_container_port,
     host_server, 
+    docker_image,
     volumes=None):
     '''
       NOTE - No support for volumes yet.  
@@ -48,7 +49,7 @@ class Formation(object):
       #LIST of        [host-dir]:[container-dir]:[rw|ro]
     '''
     app = App(container_id, self.username, hostname, cpu_shares, ram, 
-      host_server, ssh_host_port, volumes)
+      host_server, docker_image, ssh_host_port, volumes)
 
     #For each port in the port_list add it to the app
     for port in port_list:
