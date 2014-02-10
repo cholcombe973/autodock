@@ -13,12 +13,12 @@ Autodock was designed to use saltstack and etcd for configuration management and
 Autodock is currently only tested on Ubuntu 13.04.  
 Testing and pull requests for other platforms are welcome.  
 Autodock has a few requirements that need to be in place before it will function properly.  
-* Docker 0.6+.  0.7.2+ highly encouraged due to bugs
+* Docker 0.8+ highly encouraged due to bugs
 * [Saltstack](http://docs.saltstack.com/topics/index.html)  
 * Python 2.7+
 * [Python Paramiko](https://github.com/paramiko/paramiko) to ssh into containers
 * [Etcd](https://github.com/coreos/etcd)
-* GoLang, so Etcd can function
+* GoLang 1.2, so Etcd can function
 * A docker base container
 
 ### Usage
