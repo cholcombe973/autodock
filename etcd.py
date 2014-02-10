@@ -19,7 +19,7 @@ class Etcd(object):
       self.server = server
     else:
       self.server = socket.gethostname()
-    self.url = 'http://%(hostname)s:4001/v1/keys' % {
+    self.url = 'http://%(hostname)s:4001/v2/keys' % {
       'hostname': self.server}
     self.logger = logger
 
@@ -42,11 +42,14 @@ class Etcd(object):
     curl.setopt(pycurl.FOLLOWLOCATION, 1)
     curl.setopt(pycurl.MAXREDIRS, 5)
     curl.setopt(curl.WRITEFUNCTION, storage.write)
+    curl.setopt(pycurl.CUSTOMREQUEST, "PUT")
     curl.perform()
     response = curl.getinfo(pycurl.HTTP_CODE)
     curl.close()
 
     if response == requests.codes.ok:
+      return True
+    elif response == requests.codes.created:
       return True
     else:
       self.logger.error("ETCD returned %(status)s %(text)s" % {
@@ -72,7 +75,11 @@ list_directory() to get directory listing).' % key)
     if 'errorCode' in res:
       raise EtcdError(res['errorCode'], res['message']) 
 
-    return str(res['value'])
+    try:
+      return str(res['node']['value'])
+    except KeyError:
+      #Fallback on v1 functionality
+      return str(res['value'])
 
   def delete_key(self, key):
     url = '%(base)s/%(key)s' % {
@@ -96,9 +103,14 @@ list_directory() to get directory listing).' % key)
     if response.status_code == requests.codes.ok:
       directory_list = []
       json_txt = json.loads(response.text)
-      for entry in json_txt: 
-        directory_list.append(str(entry['key']))
-      return directory_list
+      try:
+        for entry in json_txt['node']['nodes']: 
+          directory_list.append(str(entry['key']))
+        return directory_list
+      except KeyError:
+        self.logger.error("Key ['node']['nodes'] not found in %(data)s" %{
+          'data': json_txt
+          })
     else:
       response.raise_for_status()
       return None
@@ -142,7 +154,9 @@ class TestEtcd(unittest.TestCase):
     self.etcd.set_key('message', 'Hello World')
 
     text = self.etcd.delete_key('message')
-    regex = re.compile(r'{"action":"DELETE","key":"/message",.*"index":\d+}')
+    regex = re.compile(r'{"action":"delete","node":{"key":"/message",'
+      '"modifiedIndex":\d+,"createdIndex":\d+},"prevNode":{"key":"/message"'
+      ',"value":"Hello World","modifiedIndex":\d+,"createdIndex":\d+}}')
     self.assertRegexpMatches(text, regex)
 
   def test_d_directorylist(self):

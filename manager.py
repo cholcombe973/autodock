@@ -133,6 +133,10 @@ class Manager(object):
       if "WARNING" in app['container_id']:
         app['container_id'] = app['container_id'].replace("WARNING: Your "\
           "kernel does not support memory swap capabilities. Limitation discarded.\n","")
+        #Message changed in docker 0.8.0
+        app['container_id'] = app['container_id'].replace("WARNING: WARNING:"\
+          "Your kernel does not support swap limit capabilities. Limitation "\
+          "discarded.\n","")
 
       # Set volumes if needed
       volumes = None
@@ -184,7 +188,12 @@ class Manager(object):
     salt_process = self.salt_client.cmd(app.host_server,'cmd.run', [d], expr_form='list')
     container_id = salt_process[app.host_server]
     if container_id:
-      app.change_container_id(container_id)
+      if "WARNING" in container_id:
+        container_id = container_id.replace("WARNING: WARNING: "\
+          "Your kernel does not support swap limit capabilities. Limitation "\
+          "discarded.\n","")
+      #Docker only uses the first 12 chars to identify a container
+      app.change_container_id(container_id[0:12])
 
   def bootstrap_application(self, app):
     # Log into the host with paramiko and run the salt bootstrap script 
