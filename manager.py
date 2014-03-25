@@ -2,10 +2,11 @@ import json
 import logging
 import paramiko
 from paramiko import SSHException
-from pyparsing import alphas, Combine, Literal, OneOrMore, nums, srange, Word
+from pyparsing import Combine, Literal, OneOrMore, nums, srange, Word
 import salt.client
+import subprocess
+from subprocess import PIPE
 import sys
-import time
 import unittest
 
 from circularlist import CircularList
@@ -29,7 +30,7 @@ class Manager(object):
     # Parse out the username and formation name 
     # from the ETCD directory string
     self.formation_parser = Literal('/formations/') + \
-      Word(alphas).setResultsName('username') + Literal('/') + \
+      Word(srange("[0-9a-zA-Z_-]")).setResultsName('username') + Literal('/') + \
       Word(srange("[0-9a-zA-Z_-]")).setResultsName('formation_name')
 
   def fqdn_to_shortname(self, fqdn):
@@ -37,6 +38,17 @@ class Manager(object):
       return fqdn.split('.')[0]
     else:
       return fqdn
+
+  def check_salt_key_used(self, hostname):
+    self.logger.info("Checking if the key for {host} is already used".format(
+      host=hostname))
+    s = subprocess.Popen('salt-key', shell=True, stdout=PIPE)
+    salt_list = s.communicate()[0]
+
+    if hostname in salt_list:
+      return True
+    else:
+      return False
 
   def check_port_used(self, host, port):
     self.logger.info("Checking if {port} on {host} is open with salt-client".format(
@@ -137,6 +149,7 @@ class Manager(object):
         app['container_id'] = app['container_id'].replace("WARNING: WARNING:"\
           "Your kernel does not support swap limit capabilities. Limitation "\
           "discarded.\n","")
+      app['container_id'].strip('\n')
 
       # Set volumes if needed
       volumes = None
@@ -167,8 +180,8 @@ class Manager(object):
 
   def start_application(self, app):
     # Run a salt cmd to startup the formation
-    docker_command = "docker run -c={cpu_shares} -d -h=\"{hostname}\" -m={ram} "\
-      "-name=\"{hostname}\" {port_list} {volume_list} {image} /usr/sbin/sshd -D"
+    docker_command = "docker run -c={cpu_shares} -d -i -t -h=\"{hostname}\" -m={ram}m "\
+      "--name={hostname} {port_list} {volume_list} {image} /sbin/my_init -- bash"
 
     self.logger.info("Port list %s" % app.port_list)
     port_list = ' '.join(map(lambda x: '-p ' + x, app.port_list))
@@ -189,9 +202,10 @@ class Manager(object):
     container_id = salt_process[app.host_server]
     if container_id:
       if "WARNING" in container_id:
-        container_id = container_id.replace("WARNING: WARNING: "\
+        container_id = container_id.replace("WARNING: "\
           "Your kernel does not support swap limit capabilities. Limitation "\
           "discarded.\n","")
+        container_id.strip("\n")
       #Docker only uses the first 12 chars to identify a container
       app.change_container_id(container_id[0:12])
 
@@ -266,6 +280,16 @@ class Manager(object):
       ssh_host_port = 9022 + i
       ssh_container_port = 22
       host_server = circular_cluster_list[i].hostname
+      hostname = '{hostname}{number}'.format(
+        hostname=hostname_scheme,
+        number=str(i).zfill(3))
+
+      # First check if we can add this host to salt.  If not exit with -1
+      if self.check_salt_key_used(hostname):
+        self.logger.error('Salt key is already taken for {hostname}'.format(
+          hostname=hostname))
+        sys.exit(-1)
+
       # We are being asked to overwrite this
       if force_host_server:
         host_server = force_host_server
@@ -293,22 +317,22 @@ class Manager(object):
             port = int(port) + 1
           validated_ports.append(str(port))
 
-      self.logger.info('Adding app to formation {formation_name}: {hostname}{number} cpu_shares={cpu} '
+      self.logger.info('Adding app to formation {formation_name}: {hostname} cpu_shares={cpu} '
         'ram={ram} ports={ports} host_server={host_server} docker_image={docker_image}'.format(
-          formation_name=formation_name, hostname=hostname_scheme, number=str(i).zfill(3), 
+          formation_name=formation_name, hostname=hostname, 
           cpu=cpu_shares, ram=ram, ports=validated_ports, host_server=host_server,
           docker_image=docker_image))
 
-      f.add_app(None, '{hostname}{number}'.format(hostname=hostname_scheme, 
-        number=str(i).zfill(3)), cpu_shares, ram, validated_ports, ssh_host_port, 
+      f.add_app(None, '{hostname}'.format(hostname=hostname), 
+        cpu_shares, ram, validated_ports, ssh_host_port, 
         ssh_container_port, host_server, docker_image, volume_list)
 
     # Lets get this party started
     for app in f.application_list:
       self.start_application(app)
-      self.logger.info("Sleeping 2 seconds while the container starts")
-      time.sleep(2)
-      self.bootstrap_application(app)
+      #self.logger.info("Sleeping 2 seconds while the container starts")
+      #time.sleep(2)
+      #self.bootstrap_application(app)
 
     self.logger.info("Saving the formation to ETCD")
     self.save_formation_to_etcd(f)

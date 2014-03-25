@@ -73,6 +73,8 @@ def parse_cli_args():
   backup_parser.add_argument('-f', '--formation', help='A Formation is a set of'
       ' infrastructure used to host Applications. Each formation includes Nodes'
       'that provide different services to the formation.', required=True)
+  backup_parser.add_argument('-d', '--directory', required=True, 
+    help='The directory to back up docker containers into')
 
   # create a parser for the "delete" command
   delete_parser = subparsers.add_parser('delete',
@@ -95,7 +97,7 @@ def parse_cli_args():
   create_parser.add_argument('-n', '--number', type=int, 
     help='The number of containers to build, ex: 1. Default=1', default=1)
 
-  create_parser.add_argument('-i', '--image',
+  create_parser.add_argument('-i', '--image', default='s2disk/baseimage:0.9.8',
     help='The docker image to use, ex: ubuntu-base. Note: This image to use '
     'needs to be identical across your cluster.')
 
@@ -160,7 +162,7 @@ def main():
   elif args.mode == 'backup':
     logger.info('Backing up a formation')
     b = AppBackup(m, logger)
-    b.backup_formation(args.username, args.formation)
+    b.backup_formation(args.username, args.formation, args.directory)
     return 0
   elif args.mode == 'delete':
     logger.info('Deleting a formation')

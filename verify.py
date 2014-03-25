@@ -12,7 +12,7 @@ import time
 from circularlist import CircularList
 from etcd import Etcd
 from paramiko import SSHException
-from pyparsing import alphas, Literal, srange, Word
+from pyparsing import Literal, srange, Word
 
 class VerifyFormations(object):
   def __init__(self, manager, logger):
@@ -25,7 +25,7 @@ class VerifyFormations(object):
     # Parse out the username and formation name 
     # from the ETCD directory string
     formation_parser = Literal('/formations/') + \
-      Word(alphas).setResultsName('username') + Literal('/') + \
+      Word(srange("[0-9a-zA-Z_-]")).setResultsName('username') + Literal('/') + \
       Word(srange("[0-9a-zA-Z_-]")).setResultsName('formation_name')
 
     # call out to ETCD and load all the formations
@@ -170,6 +170,6 @@ class VerifyFormations(object):
         self.logger.info("Cron is running.")
       ssh.close()
     except SSHException:
-      self.logger.error("Failed to log into server.  Shutting it down and "\
-        "cleaning up the mess.")
-      self.delete_container(app.host_server, app.container_id)
+      self.logger.error("Failed to log into server.")
+      # TODO should we delete this or ignore it?
+      #self.delete_container(app.host_server, app.container_id)
